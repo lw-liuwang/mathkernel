@@ -8,9 +8,9 @@ import shutil
 import tempfile
 import uuid
 
-from .model import InputError, Plan, read_json, seconds_json
+from .inputs import InputError, read_json, seconds_json
 from .paths import scratch_directory
-from .protocol import builtin_proof, run_lean
+from .protocol import run_lean
 from .workspace import (RESOURCE_KEYS, digest, local_file, load_task, now, require_ready,
                         session_status, write_json)
 
@@ -49,7 +49,7 @@ def compare_evaluation(raw, task, plan):
     reduction = task["objective"]["minimum_reduction"]
     improves = (baseline["feasible"] and candidate["feasible"] and after < before and
                 after * reduction["denominator"] <= before * (reduction["denominator"] - reduction["numerator"]))
-    return {"model": task["model"]["kind"], "task": task["name"], "hardware": task["hardware"],
+    return {"model": task["name"], "task": task["name"], "hardware": task["hardware"],
             "baseline_plan": task["baseline"], "candidate_plan": plan,
             "baseline": baseline, "candidate": candidate, "objective": task["objective"],
             "objective_value": after, "model_improvement": improves,
@@ -76,8 +76,6 @@ def evaluate_iteration(root, candidate_path, timeout=120):
         raise InputError("A candidate must contain a nonempty plan object, with optional proof file")
     if set(candidate) - {"plan", "proof"}:
         raise InputError("Candidate fields are plan and optional proof")
-    if task["model"]["kind"] == "matmul-chain":
-        Plan.parse(candidate["plan"])
     proof = local_file(candidate_path.parent, candidate["proof"]).read_text() if candidate.get("proof") else None
     state = session_status(root, revision, task["budget"])
     if state["budget_exhausted"]:
@@ -129,9 +127,9 @@ def verify_iteration(root, identifier, timeout=120, proof_path=None, fresh=False
     directory, task, definition, plan, record = load_iteration(root, identifier)
     if proof_path:
         (directory / "proof.lean").write_text(Path(proof_path).read_text())
-    if task["model"]["kind"] == "lean" and not (directory / "proof.lean").is_file():
+    if not (directory / "proof.lean").is_file():
         raise InputError("Supply baselineCorrect and candidateCorrect with task verify --proof FILE")
-    proof = builtin_proof() if task["model"]["kind"] == "matmul-chain" else local_file(directory, "proof.lean").read_text()
+    proof = local_file(directory, "proof.lean").read_text()
     run = directory / "checks" / uuid.uuid4().hex[:12]
     if fresh:
         evaluation = run_lean(run / "evaluation", task, plan, definition, timeout)

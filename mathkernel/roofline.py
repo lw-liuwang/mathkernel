@@ -1,48 +1,12 @@
-"""Roofline coordinates and PNG plots for modeled matrix-chain plans."""
+"""Render Roofline data supplied by an experiment report."""
 
-from fractions import Fraction
 import json
 import math
 import os
 from pathlib import Path
 
-from .model import InputError, compare
+from .inputs import InputError
 from .paths import scratch_directory
-
-
-def roofline_data(task, candidate):
-    comparison = compare(task, candidate)
-    hardware = task.hardware
-    denominator = hardware.peak_flops_per_second * hardware.hbm_bytes_per_second
-    expressions = {"left": ["AB", "(AB)C"], "right": ["BC", "A(BC)"]}
-    points = []
-    for name, plan in (("baseline", task.baseline), ("candidate", candidate)):
-        report = comparison[name]
-        if not report["feasible"]:
-            raise InputError(f"Cannot plot infeasible {name}: {'; '.join(report['violations'])}")
-        labels = expressions[plan.order]
-        for kind, label, costs in [
-            *(('gemm', label, op) for label, op in zip(labels, report["operations"])),
-            ('total', f"{name} total", report),
-        ]:
-            seconds = Fraction(costs["time_ticks"], denominator)
-            points.append({
-                "plan": name, "kind": kind, "label": label,
-                "flops": costs["flops"], "hbm_bytes": costs["hbm_bytes"],
-                "intensity_flops_per_byte": float(Fraction(costs["flops"], costs["hbm_bytes"])),
-                "performance_tflops": float(Fraction(costs["flops"], 10**12) / seconds),
-                "estimated_microseconds": float(seconds * 10**6),
-            })
-    return {
-        "model": comparison["model"], "task": task.name,
-        "hardware": comparison["hardware"],
-        "ridge_intensity_flops_per_byte": hardware.peak_flops_per_second / hardware.hbm_bytes_per_second,
-        "model_speedup": comparison["model_speedup"], "points": points,
-    }
-
-
-def plot_roofline(task, candidate, output):
-    return plot_roofline_data(roofline_data(task, candidate), output)
 
 
 def plot_roofline_data(data, output):
@@ -84,7 +48,7 @@ def plot_roofline_data(data, output):
         axis.text(ridge * 1.08, peak * 0.45, f"Ridge: {ridge:g} FLOP/B", fontsize=10, color="#475569")
         axis.text(high * 0.92, peak * 1.12, f"Compute ceiling: {peak:g} TFLOP/s", ha="right", fontsize=10)
         axis.text(low * 1.2, min(peak, bandwidth * low * 1.2 / 10**12) * 1.45,
-                  f"HBM: {bandwidth / 10**12:g} TB/s", rotation=32, color="#475569", fontsize=10)
+                  f"Bandwidth: {bandwidth / 10**12:g} TB/s", rotation=32, color="#475569", fontsize=10)
 
         for point in positioned:
             baseline = point["plan"] == "baseline"
@@ -101,7 +65,7 @@ def plot_roofline_data(data, output):
         for point in positioned:
             key = (point["intensity_flops_per_byte"], point["performance_tflops"], point["kind"])
             groups.setdefault(key, []).append(point)
-        gemm_index = 0
+        operation_index = 0
         for (intensity, performance, kind), group in sorted(groups.items()):
             if kind == "total":
                 label = " / ".join(point["plan"].capitalize() for point in group) + " total"
@@ -109,8 +73,8 @@ def plot_roofline_data(data, output):
                 offset = (28, -65)
             else:
                 text = " / ".join(dict.fromkeys(point["label"] for point in group))
-                offset = (-70, 32) if gemm_index % 2 == 0 else (20, -15)
-                gemm_index += 1
+                offset = (-70, 32) if operation_index % 2 == 0 else (20, -15)
+                operation_index += 1
             axis.annotate(text, (intensity, performance), xytext=offset, textcoords="offset points",
                           fontsize=9, arrowprops={"arrowstyle": "-", "color": "#94a3b8"})
 

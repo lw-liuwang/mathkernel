@@ -1,7 +1,18 @@
-import MathKernel.Verification
 import Lean
 
 namespace MathKernel.Workflow
+
+structure Hardware where
+  peakFlops : Nat
+  bandwidth : Nat
+  fastBytes : Nat
+  elementBytes : Nat
+
+structure Resources where
+  flops : Nat
+  hbmBytes : Nat
+  peakBytes : Nat
+  deriving Repr, DecidableEq
 
 -- Models interpret the exact task and plan snapshots supplied by the workflow.
 inductive Value where

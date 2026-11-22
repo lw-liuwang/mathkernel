@@ -13,7 +13,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from mathkernel.model import InputError, read_json
+from mathkernel.inputs import InputError, read_json
 from mathkernel.paths import ROOT, scratch_directory
 from mathkernel.verification import lake_environment
 from mathkernel.workflow import (accept_iteration, evaluate_iteration, export_iteration,
@@ -36,10 +36,10 @@ class WorkspaceCase(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.base = Path(self.temp.name)
         self.root = self.base / "task"
-        initialize(self.root, "matmul-chain")
+        shutil.copytree(ROOT / "tests" / "fixtures" / "experiment", self.root)
 
     def confirm(self):
-        return confirm_task(self.root, "integration fixture", "Confirm synthetic model, assumptions, target and budget for this test")
+        return confirm_task(self.root, "integration fixture", "Confirm synthetic fixture, assumptions, target and budget for this test")
 
     def edit(self, change):
         task = read_json(self.root / "task.json")
@@ -48,7 +48,8 @@ class WorkspaceCase(unittest.TestCase):
 
     def candidate(self, plan):
         path = self.base / "candidate.json"
-        write_json(path, {"plan": plan})
+        write_json(path, {"plan": plan, "proof": "Proof.lean"})
+        shutil.copy2(self.root / "Proof.lean", self.base / "Proof.lean")
         return path
 
 
@@ -80,10 +81,10 @@ class TaskPreparationTests(WorkspaceCase):
         self.assertTrue(self.confirm()["ready"])
 
     def test_custom_model_change_invalidates_review(self):
-        root = self.base / "fusion"
-        initialize(root, "fusion")
+        root = self.base / "custom"
+        shutil.copytree(ROOT / "tests" / "fixtures" / "experiment", root)
         confirm_task(root, "test", "Confirm custom definition")
-        path = root / "model" / "Model.lean"
+        path = root / "Model.lean"
         path.write_text(path.read_text() + "\n-- model revision\n")
         self.assertEqual(check_task(root)["status"], "needs_confirmation")
 
@@ -111,7 +112,7 @@ class TaskPreparationTests(WorkspaceCase):
         self.assertEqual(check_task(self.root)["status"], "needs_confirmation")
 
     def test_absolute_model_paths_are_not_portable_task_inputs(self):
-        self.edit(lambda task: task["model"].update(definition=str(self.root / "model" / "task.json")))
+        self.edit(lambda task: task["model"].update(definition=str(self.root / "Model.lean")))
         self.assertEqual(check_task(self.root)["status"], "invalid_task")
 
     def test_budget_counts_failures_and_elapsed_time(self):
@@ -169,6 +170,14 @@ class WorkflowLeanTests(WorkspaceCase):
         self.assertFalse(result["candidate"]["feasible"])
         self.assertEqual(verify_iteration(self.root, result["iteration"])["verification_status"], "proof_failed")
 
+    def test_task_feasibility_and_semantics_are_checked(self):
+        self.confirm()
+        for strategy in ("infeasible", "incorrect"):
+            with self.subTest(strategy=strategy):
+                result = evaluate_iteration(self.root, self.candidate({"strategy": strategy}))
+                checked = verify_iteration(self.root, result["iteration"])
+                self.assertEqual(checked["verification_status"], "proof_failed")
+
     def test_changed_task_or_candidate_cannot_reuse_a_proof(self):
         self.confirm()
         result = evaluate_iteration(self.root, self.root / "candidate.json")
@@ -188,10 +197,10 @@ class WorkflowLeanTests(WorkspaceCase):
         self.assertEqual(accepted["acceptance_status"], "rejected")
         self.assertEqual(accepted["verification_status"], "stale_evaluation")
 
-    def test_new_kernel_rejects_sorry_and_missing_semantic_obligations(self):
-        root = self.base / "fusion"
-        initialize(root, "fusion")
-        confirm_task(root, "test", "Confirm exact-real fusion task and model")
+    def test_task_model_rejects_sorry_and_missing_semantic_obligations(self):
+        root = self.base / "custom"
+        shutil.copytree(ROOT / "tests" / "fixtures" / "experiment", root)
+        confirm_task(root, "test", "Confirm synthetic test task and definition")
         result = evaluate_iteration(root, root / "candidate.json")
         verified = verify_iteration(root, result["iteration"])
         self.assertEqual(verified["verification_status"], "verified")
@@ -212,30 +221,26 @@ class WorkflowLeanTests(WorkspaceCase):
         self.assertEqual(result["verification_status"], "timeout")
 
     @unittest.skipUnless(importlib.util.find_spec("matplotlib"), "Plotting environment is not installed")
-    def test_matrix_and_new_fusion_kernel_export_and_replay_independently(self):
-        for example in ("matmul-chain", "fusion"):
-            with self.subTest(example=example):
-                root = self.base / example
-                initialize(root, example)
-                confirm_task(root, "test", "Confirm synthetic task and approved model")
-                result = evaluate_iteration(root, root / "candidate.json")
-                self.assertTrue(result["model_improvement"])
-                output = self.base / f"{example}-bundle"
-                exported = export_iteration(root, result["iteration"], output)
-                self.assertEqual(exported["acceptance_status"], "accepted", exported)
-                moved = self.base / f"{example}-moved"
-                output.rename(moved)
-                # Removing the source workspace must not affect bundle replay.
-                shutil.rmtree(root)
-                replayed = accept_iteration(moved)
-                self.assertEqual(replayed["acceptance_status"], "accepted", replayed)
-                artifacts = Path(replayed["artifact_directory"])
-                self.assertIn("pseudocode", read_json(artifacts / "scheme.json"))
-                self.assertTrue((artifacts / "roofline.png").read_bytes().startswith(b"\x89PNG"))
-                (artifacts / "roofline.png").write_bytes(b"\x89PNG\r\n\x1a\nwrong image")
-                with self.assertRaises(InputError):
-                    accept_iteration(moved)
-                self.assertEqual(read_json(moved / "acceptance.json")["acceptance_status"], "rejected")
+    def test_task_model_export_and_replay_independently(self):
+        self.confirm()
+        result = evaluate_iteration(self.root, self.root / "candidate.json")
+        self.assertTrue(result["model_improvement"])
+        output = self.base / "bundle"
+        exported = export_iteration(self.root, result["iteration"], output)
+        self.assertEqual(exported["acceptance_status"], "accepted", exported)
+        moved = self.base / "moved"
+        output.rename(moved)
+        # Removing the source workspace must not affect bundle replay.
+        shutil.rmtree(self.root)
+        replayed = accept_iteration(moved)
+        self.assertEqual(replayed["acceptance_status"], "accepted", replayed)
+        artifacts = Path(replayed["artifact_directory"])
+        self.assertIn("pseudocode", read_json(artifacts / "scheme.json"))
+        self.assertTrue((artifacts / "roofline.png").read_bytes().startswith(b"\x89PNG"))
+        (artifacts / "roofline.png").write_bytes(b"\x89PNG\r\n\x1a\nwrong image")
+        with self.assertRaises(InputError):
+            accept_iteration(moved)
+        self.assertEqual(read_json(moved / "acceptance.json")["acceptance_status"], "rejected")
 
 
 if __name__ == "__main__":

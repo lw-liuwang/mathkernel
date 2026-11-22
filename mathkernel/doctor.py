@@ -8,7 +8,7 @@ import sys
 import tempfile
 import tomllib
 
-from .model import InputError, read_json
+from .inputs import InputError, read_json
 from .paths import scratch_directory
 from .verification import ROOT, lake_environment
 
@@ -55,8 +55,8 @@ def doctor(timeout=120):
                            "remedy": "Prepare the pinned Mathlib checkout using tools/setup_lean.py"})
             build = subprocess.run([lake, "--no-cache", "build", "MathKernel"], cwd=ROOT / "lean", env=environment,
                                    capture_output=True, text=True, timeout=timeout)
-            checks.append({"name": "models", "ready": build.returncode == 0, "detail": (build.stdout + build.stderr).strip(),
-                           "remedy": "Prepare the pinned Mathlib dependencies and rebuild MathKernel"})
+            checks.append({"name": "proof_contract", "ready": build.returncode == 0, "detail": (build.stdout + build.stderr).strip(),
+                           "remedy": "Prepare the pinned Mathlib dependencies and rebuild the MathKernel proof contract"})
     except (OSError, InputError, subprocess.TimeoutExpired) as error:
         checks.append({"name": "lean_environment", "ready": False, "detail": str(error),
                        "remedy": "Run tools/setup_lean.py; see README installation requirements"})

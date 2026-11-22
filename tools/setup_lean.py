@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install the pinned Linux x86_64 Lean environment locally and build the model."""
+"""Install the pinned Linux x86_64 Lean environment locally and build the proof contract."""
 
 import argparse
 import hashlib
@@ -99,13 +99,8 @@ def main():
     environment["PATH"] = str(toolchain / "bin") + os.pathsep + environment.get("PATH", "")
     lake = str(toolchain / "bin" / "lake")
     prepare_packages(environment)
-    commands = [
-        ("--no-cache", "exe", "cache", "get", "Mathlib.Data.Matrix.Mul", "Mathlib.Data.Real.Basic"),
-        ("--no-cache", "build", "MathKernel"),
-    ]
-    for arguments in commands:
-        subprocess.run([lake, *arguments], cwd=ROOT / "lean", env=environment, check=True)
-    print("Pinned Lean environment ready. Run python3 tools/mathkernel.py verify TASK CANDIDATE.")
+    subprocess.run([lake, "--no-cache", "build", "MathKernel"], cwd=ROOT / "lean", env=environment, check=True)
+    print("Pinned Lean environment ready. Run python3 tools/mathkernel.py doctor.")
 
 
 if __name__ == "__main__":

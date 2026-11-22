@@ -4,8 +4,9 @@ Use [skills/optimize-mathkernel/SKILL.md](skills/optimize-mathkernel/SKILL.md)
 when asked to optimize a mathematical plan. Follow
 [workflows/prove-improvement.md](workflows/prove-improvement.md) for the experiment.
 
-- The task workflow accepts built-in or task-local Lean models. Matrix-chain
-  association and elementwise fusion are examples, not a kernel-type boundary.
+- Keep the main branch focused on the generic experiment workflow and proof
+  contract. Every experiment supplies task-local definitions and proofs; do not
+  add built-in kernel models or example catalogs.
 - Missing information or model definitions require explicit user authorization
   before agent supplementation. Present the completed specification and assumptions
   for user confirmation before recording `task confirm` and starting optimization.
@@ -17,8 +18,8 @@ when asked to optimize a mathematical plan. Follow
 - Evaluate proposals using `python3 tools/mathkernel.py`. Only Lean verification
   establishes `verification_status: verified`; task deliverables additionally need
   `acceptance_status: accepted` from fresh acceptance.
-- Keep task candidates and verification records in the task workspace. Legacy
-  standalone verification continues to use `runs/`.
+- Keep task candidates and verification records in the task workspace. Use only
+  `doctor` and `task ...`; do not add compatibility commands.
 - Use `mathkernel.paths.scratch_directory()` for temporary files. It respects
   `TMPDIR` and otherwise uses the project's `.cache/mathkernel` directory.
 - Run `python3 -m unittest discover -s tests -v` for changes to tools or models.

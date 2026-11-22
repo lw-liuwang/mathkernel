@@ -1,6 +1,6 @@
 {
   "plan": {
-    "kind": "fused"
+    "strategy": "compact"
   },
   "proof": "Proof.lean"
 }

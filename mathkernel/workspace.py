@@ -4,9 +4,8 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
-import shutil
 
-from .model import Hardware, InputError, Task, evaluate, read_json
+from .inputs import Hardware, InputError, read_json
 from .protocol import METRICS, lean_value
 from .verification import ROOT, source_digest
 
@@ -75,7 +74,8 @@ def validate_task(task):
             require(hardware, key, text if key == "name" else lambda x: type(x) is int and x > 0,
                     "Supply the hardware value and its basis; do not guess it without authorization", "hardware")
     model = task.get("model", {}) if isinstance(task, dict) else {}
-    require(model, "kind", lambda x: x in ("matmul-chain", "lean"), "Choose the built-in matrix model or a task-local Lean model", "model")
+    if isinstance(model, dict) and set(model) - {"definition"}:
+        issues.append({"field": "model", "message": "Supply only a task-local Lean definition path"})
     require(model, "definition", text, "Provide the model definition file", "model")
     objective = task.get("objective", {}) if isinstance(task, dict) else {}
     require(objective, "metric", lambda x: isinstance(x, str) and x in METRICS, "Confirm the resource metric to minimize", "objective")
@@ -109,14 +109,8 @@ def load_task(root):
         raise InputError("Task is incomplete; run task check: " + "; ".join(item["field"] for item in issues))
     lean_value(task)
     definition_path = local_file(root, task["model"]["definition"])
-    definition = read_json(definition_path) if task["model"]["kind"] == "matmul-chain" else definition_path.read_text()
+    definition = definition_path.read_text()
     Hardware.parse(task["hardware"])
-    if task["model"]["kind"] == "matmul-chain":
-        parsed = Task.parse(definition)
-        if task["hardware"] != definition["hardware"] or task["baseline"] != definition["baseline"]:
-            raise InputError("Built-in model hardware and baseline must match the confirmed task")
-        if not evaluate(parsed, parsed.baseline)["feasible"]:
-            raise InputError("Baseline is infeasible; ask the user to revise the task")
     revision = digest({"task": task, "model_definition": definition, "trusted_sources": source_digest()})
     return task, definition, revision
 
@@ -159,20 +153,14 @@ def require_ready(root):
     return load_task(root)
 
 
-def initialize(root, example=None):
+def initialize(root):
     root = Path(root).resolve()
     if root.exists() and any(root.iterdir()):
         raise InputError("Initialize an empty directory; existing task files will not be overwritten")
     root.mkdir(parents=True, exist_ok=True)
-    if example:
-        source = ROOT / "examples" / "workflow" / example
-        if not source.is_dir():
-            raise InputError(f"Unknown workflow example: {example}")
-        shutil.copytree(source, root, dirs_exist_ok=True)
-    else:
-        write_json(root / "task.json", {"schema_version": 1, "name": "", "specification": {},
-                   "hardware": {}, "model": {}, "baseline": {}, "objective": {},
-                   "constraints": {}, "budget": {}, "supplements": []})
+    write_json(root / "task.json", {"schema_version": 1, "name": "", "specification": {},
+               "hardware": {}, "model": {}, "baseline": {}, "objective": {},
+               "constraints": {}, "budget": {}, "supplements": []})
     return check_task(root)
 
 

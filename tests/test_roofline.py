@@ -1,77 +1,64 @@
-"""Roofline coordinates, aggregation, and exported plot artifacts."""
+"""Render experiment resource reports without a kernel-specific model."""
 
-from dataclasses import replace
 import importlib.util
 import json
 from pathlib import Path
-import subprocess
-import sys
 import tempfile
 import unittest
 
-from mathkernel.model import InputError, Plan, Task, read_json
-from mathkernel.paths import scratch_directory
-from mathkernel.roofline import plot_roofline_data, roofline_data
+from mathkernel.inputs import read_json
+from mathkernel.paths import ROOT, scratch_directory
+from mathkernel.roofline import plot_roofline_data
 from mathkernel.workflow import compare_evaluation, roofline_points
-from mathkernel.verification import ROOT
 
 
 class RooflineTests(unittest.TestCase):
     def setUp(self):
-        example = ROOT / "examples" / "matmul-chain"
-        self.task = Task.parse(read_json(example / "task.json"))
-        self.candidate = Plan.parse(read_json(example / "candidate.json"))
+        self.task = read_json(ROOT / "tests" / "fixtures" / "experiment" / "task.json")
+        self.before = {"operations": [{"flops": 16, "hbm_bytes": 16, "peak_fast_memory_bytes": 8}],
+                       "feasible": True, "formula": "before", "pseudocode": "reference"}
+        self.after = {"operations": [{"flops": 8, "hbm_bytes": 8, "peak_fast_memory_bytes": 8}],
+                      "feasible": True, "formula": "after", "pseudocode": "candidate"}
 
-    def test_example_plans_share_positions_but_have_different_times(self):
-        data = roofline_data(self.task, self.candidate)
+    def data(self):
+        return roofline_points(compare_evaluation({"baseline": self.before, "candidate": self.after}, self.task, {"strategy": "candidate"}))
+
+    def test_proportional_costs_keep_positions_while_time_improves(self):
+        data = self.data()
         totals = [point for point in data["points"] if point["kind"] == "total"]
-        self.assertEqual(data["ridge_intensity_flops_per_byte"], 100)
-        self.assertAlmostEqual(totals[0]["intensity_flops_per_byte"], 12.641975308641975)
         self.assertEqual(totals[0]["intensity_flops_per_byte"], totals[1]["intensity_flops_per_byte"])
         self.assertEqual(totals[0]["performance_tflops"], totals[1]["performance_tflops"])
-        self.assertEqual(totals[0]["estimated_microseconds"], 21.233664)
-        self.assertEqual(totals[1]["estimated_microseconds"], 1.327104)
-        self.assertEqual(data["model_speedup"], 16)
+        self.assertEqual(totals[0]["estimated_microseconds"], 2 * totals[1]["estimated_microseconds"])
+        self.assertEqual(data["model_speedup"], 2)
 
-    def test_mixed_bottlenecks_put_aggregate_below_roof(self):
-        task = replace(self.task, hardware=replace(self.task.hardware, peak_flops_per_second=12000000000000))
-        data = roofline_data(task, self.candidate)
-        for total in (point for point in data["points"] if point["kind"] == "total"):
-            self.assertGreater(total["intensity_flops_per_byte"], 12)
-            self.assertLess(total["performance_tflops"], 12)
-
-    def test_infeasible_plan_has_no_roofline_point(self):
-        task = replace(self.task, hardware=replace(self.task.hardware, fast_memory_bytes=1))
-        with self.assertRaises(InputError):
-            roofline_data(task, self.candidate)
+    def test_sequential_mixed_bottlenecks_keep_aggregate_below_roof(self):
+        self.task["hardware"]["peak_flops_per_second"] = 1000
+        self.before["operations"] = [{"flops": 100, "hbm_bytes": 1, "peak_fast_memory_bytes": 8},
+                                     {"flops": 1, "hbm_bytes": 100, "peak_fast_memory_bytes": 8}]
+        data = self.data()
+        total = next(point for point in data["points"] if point["plan"] == "baseline" and point["kind"] == "total")
+        self.assertEqual(total["intensity_flops_per_byte"], 1)
+        self.assertLess(total["performance_tflops"], 1000 / 10**12)
 
     @unittest.skipUnless(importlib.util.find_spec("matplotlib"), "Plotting environment is not installed")
     def test_memory_only_scheme_keeps_time_comparison_without_log_zero(self):
-        task = read_json(ROOT / "examples" / "workflow" / "fusion" / "task.json")
-        before = {"operations": [{"flops": 0, "hbm_bytes": 16, "peak_fast_memory_bytes": 8}],
-                  "feasible": True, "formula": "copy twice", "pseudocode": "copy x to t; copy t to y"}
-        after = {"operations": [{"flops": 0, "hbm_bytes": 8, "peak_fast_memory_bytes": 8}],
-                 "feasible": True, "formula": "copy once", "pseudocode": "copy x to y"}
-        data = roofline_points(compare_evaluation({"baseline": before, "candidate": after}, task, {"kind": "copy"}))
+        self.before["operations"][0]["flops"] = 0
+        self.after["operations"][0]["flops"] = 0
+        data = self.data()
         self.assertTrue(all(point["intensity_flops_per_byte"] is None for point in data["points"]))
         with tempfile.TemporaryDirectory(dir=scratch_directory()) as scratch:
             result = plot_roofline_data(data, Path(scratch) / "copy")
             self.assertTrue(Path(result["artifacts"]["png"]).read_bytes().startswith(b"\x89PNG"))
 
     @unittest.skipUnless(importlib.util.find_spec("matplotlib"), "Plotting environment is not installed")
-    def test_cli_exports_png_and_point_data(self):
-        prefix = scratch_directory() / "roofline-test" / "plot"
-        completed = subprocess.run([
-            sys.executable, "tools/mathkernel.py", "roofline",
-            "examples/matmul-chain/task.json", "examples/matmul-chain/candidate.json",
-            "--output", str(prefix),
-        ], cwd=ROOT, capture_output=True, text=True, timeout=60)
-        self.assertEqual(completed.returncode, 0, completed.stderr + completed.stdout)
-        result = json.loads(completed.stdout)
-        paths = {name: Path(value) for name, value in result["artifacts"].items()}
-        self.assertEqual(set(paths), {"png", "json"})
-        self.assertEqual(paths["png"].read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
-        self.assertEqual(len(json.loads(paths["json"].read_text())["points"]), 6)
+    def test_exported_png_and_points_match_the_experiment(self):
+        data = self.data()
+        with tempfile.TemporaryDirectory(dir=scratch_directory()) as scratch:
+            result = plot_roofline_data(data, Path(scratch) / "plot")
+            paths = {name: Path(value) for name, value in result["artifacts"].items()}
+            self.assertEqual(set(paths), {"png", "json"})
+            self.assertEqual(paths["png"].read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
+            self.assertEqual(json.loads(paths["json"].read_text()), data)
 
 
 if __name__ == "__main__":

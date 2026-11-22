@@ -6,7 +6,7 @@ from pathlib import Path
 import subprocess
 import time
 
-from .model import InputError, Task
+from .inputs import InputError
 from .verification import ROOT, checked_axioms, lake_environment
 
 
@@ -30,7 +30,7 @@ def lean_value(value):
     raise InputError("Task and plan numbers must be integers; express fractions as numerator/denominator objects")
 
 
-def instance_source(task, candidate, definition):
+def instance_source(task, candidate):
     hardware = task["hardware"]
     h = "⟨" + ", ".join(str(hardware[key]) for key in ("peak_flops_per_second", "hbm_bytes_per_second", "fast_memory_bytes", "element_bytes")) + "⟩"
     objective = task["objective"]
@@ -38,15 +38,7 @@ def instance_source(task, candidate, definition):
     limits = task["constraints"]
     limit_terms = [f"(some {limits[key]})" if key in limits else "none" for key in ("flops", "hbm_bytes", "peak_fast_memory_bytes")]
     goal = f"⟨.{METRICS[objective['metric']]}, {reduction['numerator']}, {reduction['denominator']}, {', '.join(limit_terms)}⟩"
-    if task["model"]["kind"] == "matmul-chain":
-        parsed = Task.parse(definition)
-        dims = ", ".join(map(str, parsed.dimensions))
-        model = f"MathKernel.MatrixChainWorkflow.model ⟨{dims}, {h}⟩"
-        imported = "MathKernel.MatrixChainWorkflow"
-    else:
-        model = "MathKernel.TaskModel.model task"
-        imported = "Model"
-    return f"""import {imported}
+    return f"""import Model
 
 namespace MathKernel.TaskInstance
 open Workflow
@@ -56,7 +48,7 @@ def baseline : Value := {lean_value(task['baseline'])}
 def candidate : Value := {lean_value(candidate)}
 def hardware : Hardware := {h}
 def goal : Goal := {goal}
-def model : Model := {model}
+def model : Model := MathKernel.TaskModel.model task
 
 end MathKernel.TaskInstance
 """
@@ -83,28 +75,14 @@ end MathKernel.Instance
 """
 
 
-def builtin_proof():
-    return """import TaskInstance
-namespace MathKernel.TaskProof
-open TaskInstance
-
-theorem baselineCorrect : ∀ x, model.execute baseline x = model.specification x :=
-  MatrixChainWorkflow.correct _ _
-theorem candidateCorrect : ∀ x, model.execute candidate x = model.specification x :=
-  MatrixChainWorkflow.correct _ _
-end MathKernel.TaskProof
-"""
-
-
 def run_lean(directory, task, candidate, definition, timeout, proof=None, comparison=None, total_timeout=None):
     """Evaluate a model, or check fixed certificate obligations with submitted proofs."""
     directory = Path(directory).resolve()
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / "TaskInstance.lean").write_text(instance_source(task, candidate, definition))
+    (directory / "TaskInstance.lean").write_text(instance_source(task, candidate))
     commands = [("--no-cache", "build", "MathKernel")]
-    if task["model"]["kind"] == "lean":
-        (directory / "Model.lean").write_text(definition)
-        commands.append(("env", "lean", "-o", str(directory / "Model.olean"), str(directory / "Model.lean")))
+    (directory / "Model.lean").write_text(definition)
+    commands.append(("env", "lean", "-o", str(directory / "Model.olean"), str(directory / "Model.lean")))
     commands.append(("env", "lean", "-o", str(directory / "TaskInstance.olean"), str(directory / "TaskInstance.lean")))
     if comparison is None:
         (directory / "Evaluate.lean").write_text(

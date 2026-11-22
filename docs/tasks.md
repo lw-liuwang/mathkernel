@@ -4,14 +4,14 @@ MathKernel 的任务目录连接用户需求、agent 的多轮变换和最终产
 
 ## 任务输入
 
-`task init DIRECTORY` 创建空模板；`--example matmul-chain` 和 `--example fusion` 分别复制两个完整示例。示例使用合成硬件参数，仍需用户确认。完整任务见 [三矩阵链](../examples/workflow/matmul-chain/task.json) 和 [逐元素融合](../examples/workflow/fusion/task.json)。
+`task init DIRECTORY` 创建空模板。Agent 根据用户的计算需求准备任务信息、任务局部的 Lean 定义和证明，再运行 `check`。主分支不提供可选 kernel 模型或示例。
 
 | 字段 | 内容 |
 | --- | --- |
 | `schema_version`、`name` | 当前协议版本为 1，以及任务名称 |
 | `specification` | `description`、输入与输出列表、`semantics` 和 `conditions`；每个输入输出记录 `name`、`shape`、`domain` |
 | `hardware` | 名称、峰值 FLOP/s、慢速存储边界带宽（字节/s）、快速存储字节数、每个数据字的字节数，字段沿用现有硬件格式 |
-| `model` | `kind` 为 `matmul-chain` 或 `lean`；`definition` 指向任务目录内的定义文件 |
+| `model` | `definition` 指向任务目录内的 Lean 定义文件 |
 | `baseline` | 由模型解释的原始结构化计算方案 |
 | `objective` | 最小化的 `metric` 和 `minimum_reduction` |
 | `constraints` | 可选资源上限；没有附加限制时使用 `{}` |
@@ -28,7 +28,7 @@ MathKernel 的任务目录连接用户需求、agent 的多轮变换和最终产
 
 ## 接入新的计算模型
 
-`model.kind: lean` 使用一个自包含的 Lean 源文件，可导入固定版本 Mathlib 与 MathKernel。文件声明：
+每个实验使用任务目录内的一个自包含 Lean 源文件，可导入固定版本 Mathlib 与 MathKernel。实验需要的 Mathlib 模块缓存由 agent 根据定义准备，例如在 `lean/` 中运行 `lake exe cache get MODULE`。文件声明：
 
 ```lean
 MathKernel.TaskModel.model (task : MathKernel.Workflow.Value) : MathKernel.Workflow.Model
@@ -44,7 +44,7 @@ MathKernel.TaskModel.model (task : MathKernel.Workflow.Value) : MathKernel.Workf
 
 本版公共 Roofline 工具对每项资源记录计算 `max(F/P, Q/B)`，然后求和；峰值存储取最大值。其他执行依赖、存储层级或资源约束可以在任务模型中表达，但报告的时间结论限于这个顺序 Roofline 解释。定义资源规则时须说明它们对应什么执行过程，不能只为得到改进填写更小数字。模型准确性与展示含义在用户确认时核对，Lean 检查确认模型内部的证明。
 
-候选 JSON 包含 `plan` 对象及可选的 `proof` 相对路径。模型解释 `plan`，不限定 kernel 类型。证明可在评价后通过 `task verify ... --proof FILE` 提供。以 [融合模型](../examples/workflow/fusion/model/Model.lean) 和 [证明](../examples/workflow/fusion/Proof.lean) 为参考：证明文件导入工具生成的 `TaskInstance`，在 `MathKernel.TaskProof` 下提供：
+候选 JSON 包含 `plan` 对象及可选的 `proof` 相对路径。模型解释 `plan`，不限定 kernel 类型。证明可在评价后通过 `task verify ... --proof FILE` 提供。证明文件导入工具生成的 `TaskInstance`，在 `MathKernel.TaskProof` 下提供：
 
 ```lean
 theorem baselineCorrect : ∀ x, model.execute baseline x = model.specification x := ...

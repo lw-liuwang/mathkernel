@@ -17,9 +17,9 @@ record the supplement, basis and scope. Present the completed specification and
 model assumptions for user confirmation before optimization. `task confirm` records
 an actual user decision; never fabricate it or copy a fixture's confirmation.
 
-The workflow is independent of a particular kernel. Reuse a suitable model or,
-with authorization, add a task-local Lean model using the [task protocol](../../docs/tasks.md).
-The matrix-chain and elementwise-fusion examples demonstrate two models. Preserve
+Each experiment supplies its own Lean definitions and proofs using the
+[task protocol](../../docs/tasks.md). The repository provides the generic workflow
+and proof contract. Request authorization before adding missing definitions. Preserve
 the confirmed specification, model, baseline, hardware, objective and budget during
 candidate iteration; changes need renewed user confirmation and fresh evidence.
 
@@ -36,7 +36,3 @@ and `task export` for the selected iteration. Deliver the accepted bundle with
 its scheme, before/after formulas, execution pseudocode, modeled Roofline PNG,
 cost comparison, assumptions and proof evidence. If no candidate passes, report
 the explored scope and unresolved obligations using the saved workspace.
-
-For existing standalone matrix-chain task files, the legacy `inspect`, `evaluate`,
-`verify`, `report` and `roofline` commands remain available. Use the task workflow
-when confirmation, iteration tracking and bundle acceptance are required.
