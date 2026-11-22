@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "name": "elementwise-fusion-workflow",
+  "specification": {
+    "description": "Compute y[i] = (x[i] + a[i]) * b[i]; fuse two elementwise stages.",
+    "inputs": [
+      {
+        "name": "x",
+        "shape": "1024",
+        "domain": "real vectors"
+      },
+      {
+        "name": "a",
+        "shape": "1024",
+        "domain": "real vectors"
+      },
+      {
+        "name": "b",
+        "shape": "1024",
+        "domain": "real vectors"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "y",
+        "shape": "1024",
+        "domain": "real vector"
+      }
+    ],
+    "semantics": "Exact real arithmetic; four-byte data words in a single-device two-level model.",
+    "conditions": [
+      "Inputs are independent and initially in slow memory; output is fully written to slow memory.",
+      "Split stages materialize the intermediate vector; fused stages keep the temporary in fast storage.",
+      "Ignore caches, address calculations, synchronization and spills; reserve four data words per active element."
+    ]
+  },
+  "hardware": {
+    "name": "synthetic-100tflops-1tbps",
+    "peak_flops_per_second": 100000000000000,
+    "hbm_bytes_per_second": 1000000000000,
+    "fast_memory_bytes": 49152,
+    "element_bytes": 4
+  },
+  "model": {
+    "kind": "lean",
+    "definition": "model/Model.lean"
+  },
+  "baseline": {
+    "kind": "split"
+  },
+  "objective": {
+    "metric": "hbm_bytes",
+    "minimum_reduction": {
+      "numerator": 1,
+      "denominator": 3
+    }
+  },
+  "constraints": {},
+  "budget": {
+    "max_iterations": 10,
+    "max_seconds": 600
+  },
+  "supplements": [],
+  "parameters": {
+    "length": 1024
+  }
+}

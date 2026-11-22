@@ -72,11 +72,11 @@ end MathKernel.Instance
 
 
 def source_digest():
-    paths = [ROOT / "lean" / "lean-toolchain", ROOT / "lean" / "lakefile.toml"]
+    paths = [ROOT / "lean" / "lean-toolchain", ROOT / "lean" / "lakefile.toml", ROOT / "lean" / "MathKernel.lean"]
     manifest = ROOT / "lean" / "lake-manifest.json"
     if manifest.is_file():
         paths.append(manifest)
-    paths.extend(sorted((ROOT / "lean" / "MathKernel").glob("*.lean")))
+    paths.extend(sorted((ROOT / "lean" / "MathKernel").rglob("*.lean")))
     digest = hashlib.sha256()
     for path in paths:
         digest.update(str(path.relative_to(ROOT)).encode())
@@ -87,15 +87,16 @@ def source_digest():
 def checked_axioms(output):
     declaration = "MathKernel.Instance.verified"
     pattern = rf"'{re.escape(declaration)}' depends on axioms:\s*\[([^\]]*)\]"
-    match = re.search(pattern, output)
-    if match:
-        axioms = {item.strip() for item in match.group(1).split(",") if item.strip()}
+    reports = re.findall(pattern, output)
+    no_axioms = output.count(f"'{declaration}' does not depend on any axioms")
+    if len(reports) + no_axioms != 1:
+        raise ValueError("Lean must report exactly one axiom record for the expected certificate")
+    if reports:
+        axioms = {item.strip() for item in reports[0].split(",") if item.strip()}
         if axioms <= TRUSTED_AXIOMS:
             return sorted(axioms)
         raise ValueError(f"Unexpected proof axioms: {sorted(axioms - TRUSTED_AXIOMS)}")
-    if f"'{declaration}' does not depend on any axioms" in output:
-        return []
-    raise ValueError("Lean did not report the expected certificate's axioms")
+    return []
 
 
 def verify(task, candidate, timeout=120):

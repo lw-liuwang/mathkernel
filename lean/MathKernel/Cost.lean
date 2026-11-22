@@ -6,7 +6,7 @@ structure Resources where
   flops : Nat := 0
   hbmBytes : Nat := 0
   peakBytes : Nat := 0
-  deriving Repr
+  deriving Repr, DecidableEq
 
 -- Cost semantics for an abstract blocked schedule. GEMM tile events count an
 -- FMA as two operations and exclude loop, address, and initialization overhead.

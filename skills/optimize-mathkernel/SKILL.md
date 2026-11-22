@@ -1,37 +1,42 @@
 ---
 name: optimize-mathkernel
-description: Find and verify cheaper mathematical plans for MathKernel three-matrix-chain tasks using the project's hardware cost model and Lean verifier.
+description: Prepare kernel optimization tasks, iterate mathematical transformations, and deliver Lean-verified MathKernel schemes with cost comparisons and Roofline plots. Use for existing or new kernels, including fusion and splitting.
 ---
 
-# Optimize a MathKernel plan
+# Optimize a MathKernel task
 
-Run commands from the project root. Read the supplied task and
-[workflow](../../workflows/prove-improvement.md). The first model supports
-`(AB)C` and `A(BC)` with one rectangular tile configuration shared by both GEMMs.
+Read the repository [workflow](../../workflows/prove-improvement.md). Run tools
+from the installed repository using the Python environment that has plotting
+support. Start with `tools/mathkernel.py doctor` and `task check TASK_DIRECTORY`.
 
-Use `inspect` to understand shapes, the baseline, and hardware limits. Propose
-candidate JSON files with `order` (`left` or `right`) and positive integer
-`tile.m`, `tile.n`, `tile.k`. Every GEMM dimension must be divisible by the
-corresponding tile size. Three tile buffers share the specified fast memory.
+Gather the mathematical specification, input conditions, numerical semantics,
+hardware resources, baseline execution plan, objective, constraints and iteration
+budget. Help the user resolve the omissions reported by `check`. Request explicit
+user authorization before supplying missing facts, model definitions or cost rules;
+record the supplement, basis and scope. Present the completed specification and
+model assumptions for user confirmation before optimization. `task confirm` records
+an actual user decision; never fabricate it or copy a fixture's confirmation.
 
-Use `evaluate` to explore changes in association and tiling. Compare estimated
-time, not arithmetic intensity alone. Both GEMMs run sequentially; their
-individual ideal Roofline times are added. Do not change the task or model to
-make a proposal pass.
+The workflow is independent of a particular kernel. Reuse a suitable model or,
+with authorization, add a task-local Lean model using the [task protocol](../../docs/tasks.md).
+The matrix-chain and elementwise-fusion examples demonstrate two models. Preserve
+the confirmed specification, model, baseline, hardware, objective and budget during
+candidate iteration; changes need renewed user confirmation and fresh evidence.
 
-For a visual comparison, use the plotting environment's Python to run
-`tools/mathkernel.py roofline TASK CANDIDATE --output PREFIX`. It exports a PNG
-image and point data. Coordinates can coincide when work and traffic decrease
-proportionally; use the companion time comparison to assess that improvement.
+Use `task evaluate TASK_DIRECTORY CANDIDATE` to record each proposal. Generate
+candidates yourself or use an external agent; choose the search strategy for the
+actual task. Use `task verify TASK_DIRECTORY ITERATION_ID` for promising candidates.
+Custom models provide baseline and candidate correctness proofs; the tools bind
+these to fixed feasibility, resource-count and improvement obligations. A successful
+Lean invocation alone is insufficient. Diagnose failed attempts from their retained
+logs. `task status` reports budget use and the best verified iteration.
 
-Use `verify` for promising candidates. It generates an instance-bound Lean proof
-from the verified transformation library, checks its axioms, and saves task,
-candidate, proof, diagnostics, and result under `runs/`. Existing association
-and scheduling rules do not require the agent to rewrite their proofs. A new
-operator or execution rule requires extending and reviewing the Lean model.
+Stop when the agreed target is met or the budget is exhausted. Use `task accept`
+and `task export` for the selected iteration. Deliver the accepted bundle with
+its scheme, before/after formulas, execution pseudocode, modeled Roofline PNG,
+cost comparison, assumptions and proof evidence. If no candidate passes, report
+the explored scope and unresolved obligations using the saved workspace.
 
-Use `report` after `verify` exits zero with `verification_status: verified`.
-Deliver the candidate, resource and modeled-time comparison, and artifact directory.
-
-If verification fails, use `lean.log` to resolve the error or adjust the candidate.
-Work within the task's search/time budget and preserve the best verified result.
+For existing standalone matrix-chain task files, the legacy `inspect`, `evaluate`,
+`verify`, `report` and `roofline` commands remain available. Use the task workflow
+when confirmation, iteration tracking and bundle acceptance are required.

@@ -6,11 +6,13 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
 
 from mathkernel.model import InputError, Plan, Task, read_json
 from mathkernel.paths import scratch_directory
-from mathkernel.roofline import roofline_data
+from mathkernel.roofline import plot_roofline_data, roofline_data
+from mathkernel.workflow import compare_evaluation, roofline_points
 from mathkernel.verification import ROOT
 
 
@@ -42,6 +44,19 @@ class RooflineTests(unittest.TestCase):
         task = replace(self.task, hardware=replace(self.task.hardware, fast_memory_bytes=1))
         with self.assertRaises(InputError):
             roofline_data(task, self.candidate)
+
+    @unittest.skipUnless(importlib.util.find_spec("matplotlib"), "Plotting environment is not installed")
+    def test_memory_only_scheme_keeps_time_comparison_without_log_zero(self):
+        task = read_json(ROOT / "examples" / "workflow" / "fusion" / "task.json")
+        before = {"operations": [{"flops": 0, "hbm_bytes": 16, "peak_fast_memory_bytes": 8}],
+                  "feasible": True, "formula": "copy twice", "pseudocode": "copy x to t; copy t to y"}
+        after = {"operations": [{"flops": 0, "hbm_bytes": 8, "peak_fast_memory_bytes": 8}],
+                 "feasible": True, "formula": "copy once", "pseudocode": "copy x to y"}
+        data = roofline_points(compare_evaluation({"baseline": before, "candidate": after}, task, {"kind": "copy"}))
+        self.assertTrue(all(point["intensity_flops_per_byte"] is None for point in data["points"]))
+        with tempfile.TemporaryDirectory(dir=scratch_directory()) as scratch:
+            result = plot_roofline_data(data, Path(scratch) / "copy")
+            self.assertTrue(Path(result["artifacts"]["png"]).read_bytes().startswith(b"\x89PNG"))
 
     @unittest.skipUnless(importlib.util.find_spec("matplotlib"), "Plotting environment is not installed")
     def test_cli_exports_png_and_point_data(self):

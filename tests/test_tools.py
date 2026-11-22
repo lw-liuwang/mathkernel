@@ -100,6 +100,11 @@ class ModelTests(ExampleCase):
             with self.subTest(axiom=axiom), self.assertRaises(ValueError):
                 checked_axioms(f"'MathKernel.Instance.verified' depends on axioms: [{axiom}]")
 
+    def test_ambiguous_axiom_output_cannot_hide_an_untrusted_proof(self):
+        output = "'MathKernel.Instance.verified' depends on axioms: []\n'MathKernel.Instance.verified' depends on axioms: [sorryAx]"
+        with self.assertRaises(ValueError):
+            checked_axioms(output)
+
     def test_cli_invalid_input_is_json_and_nonzero(self):
         completed = subprocess.run(
             [sys.executable, "tools/mathkernel.py", "inspect", "/nonexistent-mathkernel-task.json"],

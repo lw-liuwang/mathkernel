@@ -42,7 +42,11 @@ def roofline_data(task, candidate):
 
 
 def plot_roofline(task, candidate, output):
-    data = roofline_data(task, candidate)
+    return plot_roofline_data(roofline_data(task, candidate), output)
+
+
+def plot_roofline_data(data, output):
+    """Plot evaluated sequential operations independently of the kernel model."""
     os.environ.setdefault("MPLCONFIGDIR", str(scratch_directory() / "matplotlib"))
     try:
         import matplotlib
@@ -57,8 +61,9 @@ def plot_roofline(task, candidate, output):
     peak = hardware["peak_flops_per_second"] / 10**12
     bandwidth = hardware["hbm_bytes_per_second"]
     ridge = data["ridge_intensity_flops_per_byte"]
-    low = min(min(point["intensity_flops_per_byte"] for point in points) / 4, ridge / 8)
-    high = max(max(point["intensity_flops_per_byte"] for point in points) * 4, ridge * 4)
+    positioned = [point for point in points if point["intensity_flops_per_byte"] and point["performance_tflops"] > 0]
+    low = min(min((point["intensity_flops_per_byte"] for point in positioned), default=ridge) / 4, ridge / 8)
+    high = max(max((point["intensity_flops_per_byte"] for point in positioned), default=ridge) * 4, ridge * 4)
     x_values = [math.exp(math.log(low) + index * math.log(high / low) / 255) for index in range(256)]
     x_values.append(ridge)
     x_values.sort()
@@ -70,7 +75,7 @@ def plot_roofline(task, candidate, output):
             1, 2, figsize=(13.6, 6.3), gridspec_kw={"width_ratios": [2.5, 1]},
             layout="constrained",
         )
-        figure.suptitle("MathKernel: matrix-chain Roofline", fontsize=18, fontweight="bold")
+        figure.suptitle("MathKernel: modeled Roofline", fontsize=18, fontweight="bold")
         axis.set_title("Modeled throughput and arithmetic intensity", loc="left", pad=18)
         axis.set_xscale("log", base=2)
         axis.set_yscale("log", base=2)
@@ -81,7 +86,7 @@ def plot_roofline(task, candidate, output):
         axis.text(low * 1.2, min(peak, bandwidth * low * 1.2 / 10**12) * 1.45,
                   f"HBM: {bandwidth / 10**12:g} TB/s", rotation=32, color="#475569", fontsize=10)
 
-        for point in points:
+        for point in positioned:
             baseline = point["plan"] == "baseline"
             total = point["kind"] == "total"
             axis.scatter(
@@ -93,7 +98,7 @@ def plot_roofline(task, candidate, output):
             )
 
         groups = {}
-        for point in points:
+        for point in positioned:
             key = (point["intensity_flops_per_byte"], point["performance_tflops"], point["kind"])
             groups.setdefault(key, []).append(point)
         gemm_index = 0
@@ -131,7 +136,8 @@ def plot_roofline(task, candidate, output):
         timing.set_xlim(0, max(times) * 1.5)
         timing.set_ylim(-0.8, 1.8)
         timing.set_xlabel("Modeled time (microseconds)")
-        timing.set_title(f"Baseline / candidate: {data['model_speedup']:g}x", loc="left", pad=18)
+        title = f"Baseline / candidate: {data['model_speedup']:g}x" if data["model_speedup"] is not None else "Model time comparison"
+        timing.set_title(title, loc="left", pad=18)
         timing.grid(axis="x", alpha=0.18)
         timing.set_axisbelow(True)
         for panel in (axis, timing):
