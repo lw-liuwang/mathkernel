@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "hardware": {
+    "name": "Intel(R) Core(TM) Ultra 5 125H / WSL2 logical CPU 0 / effective calibrated rates",
+    "peak_flops_per_second": 9083202562,
+    "hbm_bytes_per_second": 20634462533,
+    "fast_memory_bytes": 32768,
+    "element_bytes": 8
+  },
+  "model": {
+    "definition": "Model.lean"
+  },
+  "objective": {
+    "metric": "estimated_seconds",
+    "minimum_reduction": {
+      "numerator": 0,
+      "denominator": 1
+    }
+  },
+  "constraints": {},
+  "budget": {
+    "max_iterations": 12
+  },
+  "supplements": [
+    {
+      "scope": "Task-local definitions, proved transformations, resource counts, hardware calibration, numerical checks and exploration budget",
+      "content": "Exact rational semantics for finite FP64 inputs, effective single-CPU compute/stream calibration, a conservative 32768-byte fast-storage budget, payload-based two-level resource counts, and at most 12 candidate evaluations. Full specification is in ../SPECIFICATION.md and remains pending user confirmation.",
+      "basis": "User-selected CPU fusion and tiled matrix multiplication experiments; C baselines and Model.lean; ../environment.json and calibration sources. Reference traffic is an idealized payload model, not measured DRAM transactions.",
+      "authorized_by": "user",
+      "authorization": "2026-11-23 user selected: 授权补充，完整规格再确认. The user then requested implementation of the plan, including complete-specification confirmation before optimization."
+    }
+  ],
+  "name": "cpu-matmul-fp64",
+  "parameters": {
+    "n": 512
+  },
+  "baseline": {
+    "strategy": "naive"
+  },
+  "specification": {
+    "description": "Preserve C = A * B and increasing-k accumulation while tiling i, j and k to reuse data for each output tile.",
+    "inputs": [
+      {
+        "name": "A",
+        "shape": "[512,512]",
+        "domain": "finite FP64 values in [-1,1], interpreted as exact rationals for Lean"
+      },
+      {
+        "name": "B",
+        "shape": "[512,512]",
+        "domain": "finite FP64 values in [-1,1], interpreted as exact rationals for Lean"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "C",
+        "shape": "[512,512]",
+        "domain": "FP64 at runtime; exact rational ordered dot products in Lean"
+      }
+    ],
+    "semantics": "For each i,j, fold k from 0 to n-1 starting at zero, adding A[i,k]*B[k,j]. Grouping adjacent k values into chunks preserves the fold order. C uses separate FP64 multiply/add without reassociation. Formal resource comparison is for n=512; additional measured sizes are 64, 256 and 257.",
+    "conditions": [
+      "Inputs and outputs are disjoint, contiguous, row-major FP64 arrays on the CPU; allocation and initialization are outside timing.",
+      "Lean checks exact rational operations. Runtime rounding and compiled-code correctness are checked separately; neither is established by the mathematical proof.",
+      "The cost model counts idealized two-level payload traffic. Cache hits, write allocation, prefetch, associativity, vectorization, loop overhead, and scheduling are not modeled.",
+      "Compute and bandwidth fields are the effective measured rates in ../environment.json, not advertised peaks. The field name hbm_bytes denotes modeled slow-level payload bytes on this CPU.",
+      "The fast-storage budget is 32 KiB, a conservative working budget within the guest-reported 48 KiB L1 data cache; it is a model assumption, not an enforced cache partition.",
+      "Baseline is i,j,k with a scalar accumulator: 2*n^3 FLOPs, 16*n^3+8*n^2 payload bytes, 24 bytes scalar state.",
+      "Tiled loops are ii,jj,kk,i,k,j with clipped boundaries. Assume one resident C tile and one A/B tile pair: 2*n^3 FLOPs, 16*n^2*ceil(n/block)+8*n^2 payload bytes, 24*block^2 fast bytes. Tile reuse is an assumption about the intended execution, not a measured cache guarantee.",
+      "The rule permits positive blocks up to n. Planned exploration is blocks 8,16,32 and an over-budget block 64 diagnostic; final acceptance separately enforces the fast-storage budget."
+    ]
+  }
+}

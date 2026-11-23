@@ -1,0 +1,74 @@
+{
+  "recorded_at": "2026-11-23T02:57:28.683269+00:00",
+  "platform": "Linux-6.18.58.1-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+  "cpu_model": "Intel(R) Core(TM) Ultra 5 125H",
+  "logical_cpu": 0,
+  "cache_topology_reported_by_guest": [
+    {
+      "level": "1",
+      "type": "Data",
+      "size": "48K",
+      "shared_cpu_list": "0-1"
+    },
+    {
+      "level": "1",
+      "type": "Instruction",
+      "size": "64K",
+      "shared_cpu_list": "0-1"
+    },
+    {
+      "level": "2",
+      "type": "Unified",
+      "size": "2048K",
+      "shared_cpu_list": "0-1"
+    },
+    {
+      "level": "3",
+      "type": "Unified",
+      "size": "18432K",
+      "shared_cpu_list": "0-17"
+    }
+  ],
+  "compiler": "cc (Ubuntu 15.2.0-16ubuntu1) 15.2.0",
+  "compile_command": [
+    "cc",
+    "-O3",
+    "-std=c11",
+    "-march=native",
+    "-fno-fast-math",
+    "-ffp-contract=off",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "/home/wuti/github/lw-liuwang/mathkernel/experiments/cpu-kernels/calibrate.c",
+    "-o",
+    "/home/wuti/github/tmp/mathkernel/cpu-build/calibrate"
+  ],
+  "source_sha256": "c4dc4cb4c262d40d5d4d8df0d2953404edd3f8d44434b1da426f0acb7eb3b7e9",
+  "binary_sha256": "45874e296870a793511201feda085cf1f3d4cee657b392778b9c219e8bb5b18f",
+  "samples": {
+    "rounds": 20000000,
+    "stream_elements": 16777216,
+    "compute_seconds": [
+      0.0353274330264,
+      0.0345644070185,
+      0.0356995590264,
+      0.0352298649959,
+      0.0350392839755,
+      0.0354918889934,
+      0.0345167319756
+    ],
+    "stream_seconds": [
+      0.0126911739935,
+      0.0131967029884,
+      0.0122050510254,
+      0.0130090839812,
+      0.0146105770255,
+      0.0129410930094,
+      0.0138907019864
+    ]
+  },
+  "effective_flops_per_second": 9083202562,
+  "effective_payload_bytes_per_second": 20634462533,
+  "basis": "Medians of seven samples after one warmup; compute counts 16 separate FP64 operations per round; streaming counts one 8-byte read and one 8-byte write per element. These are effective calibration rates, not vendor peaks or measured DRAM transactions."
+}

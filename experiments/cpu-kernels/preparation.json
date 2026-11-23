@@ -1,0 +1,300 @@
+{
+  "status": "needs_confirmation",
+  "baseline_checks": {
+    "status": "passed",
+    "compile_command": [
+      "cc",
+      "-O3",
+      "-std=c11",
+      "-march=native",
+      "-fno-fast-math",
+      "-ffp-contract=off",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-shared",
+      "-fPIC",
+      "/home/wuti/github/lw-liuwang/mathkernel/experiments/cpu-kernels/baselines.c",
+      "-o",
+      "/home/wuti/github/tmp/mathkernel/cpu-build/baselines.so"
+    ],
+    "seed": 20261123,
+    "checks": [
+      {
+        "kernel": "fusion",
+        "n": 0,
+        "case": "dyadic",
+        "max_absolute_error": 0,
+        "absolute_tolerance": 0
+      },
+      {
+        "kernel": "fusion",
+        "n": 0,
+        "case": "zero",
+        "max_absolute_error": 0,
+        "absolute_tolerance": 0
+      },
+      {
+        "kernel": "fusion",
+        "n": 0,
+        "case": "cancellation",
+        "max_absolute_error": 0,
+        "absolute_tolerance": 0
+      },
+      {
+        "kernel": "fusion",
+        "n": 0,
+        "case": "random",
+        "max_absolute_error": 0,
+        "absolute_tolerance": 3.552713678800501e-15
+      },
+      {
+        "kernel": "fusion",
+        "n": 1,
+        "case": "dyadic",
+        "max_absolute_error": 0.0,
+        "absolute_tolerance": 0
+      },
+      {
+        "kernel": "fusion",
+        "n": 1,
+        "case": "zero",
+        "max_absolute_error": 0.0,
+        "absolute_tolerance": 0
+      },
+      {
+        "kernel": "fusion",
+        "n": 1,
+        "case": "cancellation",
+        "max_absolute_error": 0.0,
+        "absolute_tolerance": 0
+      },
+      {
+        "kernel": "fusion",
+        "n": 1,
+        "case": "random",
+        "max_absolute_error": 0.0,
+        "absolute_tolerance": 3.552713678800501e-15
+      },
+      {
+        "kernel": "fusion",
+        "n": 17,
+        "case": "dyadic",
+        "max_absolute_error": 0.0,
+        "absolute_tolerance": 0
+      },
+      {
+        "kernel": "fusion",
+        "n": 17,
+        "case": "zero",
+        "max_absolute_error": 0.0,
+        "absolute_tolerance": 0
+      },
+      {
+        "kernel": "fusion",
+        "n": 17,
+        "case": "cancellation",
+        "max_absolute_error": 0.0,
+        "absolute_tolerance": 0
+      },
+      {
+        "kernel": "fusion",
+        "n": 17,
+        "case": "random",
+        "max_absolute_error": 2.220446049250313e-16,
+        "absolute_tolerance": 3.552713678800501e-15
+      },
+      {
+        "kernel": "fusion",
+        "n": 1025,
+        "case": "dyadic",
+        "max_absolute_error": 0.0,
+        "absolute_tolerance": 0
+      },
+      {
+        "kernel": "fusion",
+        "n": 1025,
+        "case": "zero",
+        "max_absolute_error": 0.0,
+        "absolute_tolerance": 0
+      },
+      {
+        "kernel": "fusion",
+        "n": 1025,
+        "case": "cancellation",
+        "max_absolute_error": 0.0,
+        "absolute_tolerance": 0
+      },
+      {
+        "kernel": "fusion",
+        "n": 1025,
+        "case": "random",
+        "max_absolute_error": 2.220446049250313e-16,
+        "absolute_tolerance": 3.552713678800501e-15
+      },
+      {
+        "kernel": "matmul",
+        "n": 0,
+        "case": "zero",
+        "max_absolute_error": 0,
+        "absolute_tolerance": 1.7763568394002505e-15
+      },
+      {
+        "kernel": "matmul",
+        "n": 0,
+        "case": "identity",
+        "max_absolute_error": 0,
+        "absolute_tolerance": 1.7763568394002505e-15
+      },
+      {
+        "kernel": "matmul",
+        "n": 0,
+        "case": "random",
+        "max_absolute_error": 0,
+        "absolute_tolerance": 1.7763568394002505e-15
+      },
+      {
+        "kernel": "matmul",
+        "n": 1,
+        "case": "zero",
+        "max_absolute_error": 0.0,
+        "absolute_tolerance": 1.7763568394002505e-15
+      },
+      {
+        "kernel": "matmul",
+        "n": 1,
+        "case": "identity",
+        "max_absolute_error": 0.0,
+        "absolute_tolerance": 1.7763568394002505e-15
+      },
+      {
+        "kernel": "matmul",
+        "n": 1,
+        "case": "random",
+        "max_absolute_error": 0.0,
+        "absolute_tolerance": 1.7763568394002505e-15
+      },
+      {
+        "kernel": "matmul",
+        "n": 3,
+        "case": "zero",
+        "max_absolute_error": 0.0,
+        "absolute_tolerance": 1.5987211554602254e-14
+      },
+      {
+        "kernel": "matmul",
+        "n": 3,
+        "case": "identity",
+        "max_absolute_error": 0.0,
+        "absolute_tolerance": 1.5987211554602254e-14
+      },
+      {
+        "kernel": "matmul",
+        "n": 3,
+        "case": "random",
+        "max_absolute_error": 3.469446951953614e-18,
+        "absolute_tolerance": 1.5987211554602254e-14
+      },
+      {
+        "kernel": "matmul",
+        "n": 17,
+        "case": "zero",
+        "max_absolute_error": 0.0,
+        "absolute_tolerance": 5.133671265866724e-13
+      },
+      {
+        "kernel": "matmul",
+        "n": 17,
+        "case": "identity",
+        "max_absolute_error": 0.0,
+        "absolute_tolerance": 5.133671265866724e-13
+      },
+      {
+        "kernel": "matmul",
+        "n": 17,
+        "case": "random",
+        "max_absolute_error": 8.881784197001252e-16,
+        "absolute_tolerance": 5.133671265866724e-13
+      },
+      {
+        "kernel": "matmul",
+        "n": 65,
+        "case": "zero",
+        "max_absolute_error": 0.0,
+        "absolute_tolerance": 7.505107646466058e-12
+      },
+      {
+        "kernel": "matmul",
+        "n": 65,
+        "case": "identity",
+        "max_absolute_error": 0.0,
+        "absolute_tolerance": 7.505107646466058e-12
+      },
+      {
+        "kernel": "matmul",
+        "n": 65,
+        "case": "random",
+        "max_absolute_error": 4.440892098500626e-15,
+        "absolute_tolerance": 7.505107646466058e-12
+      }
+    ],
+    "scope": "Baseline correctness only; no candidate evaluation or comparative timing."
+  },
+  "rule_inspection": {
+    "fusion": {
+      "verification_status": "not_run",
+      "rules": [
+        {
+          "description": "Fuse three passes without changing arithmetic order; arguments: {}. Requires strategy=separate.",
+          "name": "fuse"
+        }
+      ],
+      "revision": "b1bdb37074685e4bf558faf37feee0a4b53fcea9776a274c18c48512a78b4d49"
+    },
+    "matmul": {
+      "verification_status": "not_run",
+      "rules": [
+        {
+          "description": "Tile i,j,k with increasing k per output; arguments: {block: integer in [1,n]}. Fast-memory feasibility is checked separately.",
+          "name": "tile"
+        }
+      ],
+      "revision": "5b486280ce1ffd8db833eea55d3716337865d4b11dbb73a8a165340af635c416"
+    }
+  },
+  "candidate_evaluations": 0,
+  "user_confirmation_recorded": false,
+  "baseline_proof_source_compilation": {
+    "fusion": "BaselineProof.lean compiled against the actual task and baseline; no candidate certificate or acceptance was run.",
+    "matmul": "BaselineProof.lean compiled against the actual task and baseline; no candidate certificate or acceptance was run."
+  },
+  "observations": {
+    "noncomputable_model": {
+      "exit_code": 1,
+      "diagnostic": "lean.dependsOnNoncomputable",
+      "reproducer": "observations/NoncomputableModel.lean"
+    }
+  },
+  "task_readiness": {
+    "fusion": {
+      "status": "needs_confirmation",
+      "ready": false,
+      "revision": "b1bdb37074685e4bf558faf37feee0a4b53fcea9776a274c18c48512a78b4d49",
+      "information_complete": true,
+      "model_definition_present": true,
+      "model_proof_status": "not_checked",
+      "issues": [],
+      "next_action": "Present the specification, model assumptions, supplements, goal and budget to the user, then record their confirmation"
+    },
+    "matmul": {
+      "status": "needs_confirmation",
+      "ready": false,
+      "revision": "5b486280ce1ffd8db833eea55d3716337865d4b11dbb73a8a165340af635c416",
+      "information_complete": true,
+      "model_definition_present": true,
+      "model_proof_status": "not_checked",
+      "issues": [],
+      "next_action": "Present the specification, model assumptions, supplements, goal and budget to the user, then record their confirmation"
+    }
+  }
+}
