@@ -12,7 +12,7 @@ def main(argv=None):
     doctor.add_argument("--timeout", type=int, default=120)
     workflow = commands.add_parser("task", help="Prepare, iterate, accept and export a mathematical experiment")
     actions = workflow.add_subparsers(dest="action", required=True)
-    for name in ("init", "check", "confirm", "status", "evaluate", "verify", "accept", "export"):
+    for name in ("init", "check", "confirm", "status", "rules", "evaluate", "verify", "accept", "export"):
         action = actions.add_parser(name)
         action.add_argument("directory")
         if name == "confirm":
@@ -28,7 +28,7 @@ def main(argv=None):
             action.add_argument("--proof")
         if name == "export":
             action.add_argument("--output", required=True)
-        if name in ("evaluate", "verify", "accept", "export"):
+        if name in ("rules", "evaluate", "verify", "accept", "export"):
             action.add_argument("--timeout", type=int, default=120)
         if name in ("accept", "export"):
             action.add_argument("--stop-reason", choices=("target_met", "budget_exhausted", "user_stopped"), default="target_met")
@@ -48,7 +48,7 @@ def main(argv=None):
 
 
 def task_command(args):
-    from .workflow import accept_iteration, evaluate_iteration, export_iteration, verify_iteration
+    from .workflow import accept_iteration, evaluate_iteration, export_iteration, list_rules, verify_iteration
     from .workspace import check_task, confirm_task, initialize, require_ready, session_status
     if args.action == "init":
         result = initialize(args.directory)
@@ -56,6 +56,8 @@ def task_command(args):
         result = check_task(args.directory)
     elif args.action == "confirm":
         result = confirm_task(args.directory, args.confirmed_by, args.note)
+    elif args.action == "rules":
+        result = list_rules(args.directory, args.timeout)
     elif args.action == "status":
         task, definition, revision = require_ready(args.directory)
         result = session_status(args.directory, revision, task["budget"])

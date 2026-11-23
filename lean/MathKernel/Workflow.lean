@@ -39,6 +39,13 @@ def Value.text (value : Value) : String :=
   | .str s => s
   | _ => ""
 
+structure Transformation {Input Output : Type} (execute : Value → Input → Output) where
+  name : String
+  description : String
+  apply : Value → Value → Except String Value
+  sound : ∀ plan arguments result, apply plan arguments = .ok result →
+    ∀ x, execute result x = execute plan x
+
 structure Model where
   Input : Type
   Output : Type
@@ -48,6 +55,7 @@ structure Model where
   feasible : Value → Bool
   formula : Value → String
   pseudocode : Value → String
+  transformations : List (Transformation execute) := []
 
 inductive Metric where
   | time | flops | bytes | storage

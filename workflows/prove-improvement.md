@@ -24,6 +24,8 @@ python3 tools/mathkernel.py task check /path/to/task
 
 每个实验使用任务目录中的 Lean 定义，接受任务与方案的结构化数据，提供数学规格、执行语义、资源计数、可行性和展示内容。不要以任意定理编译成功代替完整证明义务。具体接口见 [任务协议](../docs/tasks.md#接入新的计算模型)。
 
+模型还可提供带等价性证明的变换规则，通过 `task rules TASK_DIRECTORY` 查看名称及参数说明。规则定义属于待确认的模型；补充规则也需要相应授权。查看目录不启动候选预算，也不表示规则已通过最终证明检查。
+
 将整理后的规格、模型含义和关键假设、基线、目标、资源约束及预算展示给用户。用户确认后才能记录确认并开始优化：
 
 ```bash
@@ -36,7 +38,7 @@ python3 tools/mathkernel.py task confirm /path/to/task --by '<确认人>' --note
 
 ## 多轮候选与证明
 
-候选文件包含 `plan`，以及可选的任务证明文件 `proof`。计划数据由模型解释，须表达数学变换及影响成本的执行组织。不要只交付一个脱离执行安排的公式。
+候选文件包含 `plan` 或 `derivation`，以及可选的任务证明文件 `proof`。直接方案由模型解释；变换链由 agent 选择任务规则和参数，工具从基线顺序执行。格式见[任务协议](../docs/tasks.md#可执行的变换链)。两种方式都须表达影响成本的执行组织。
 
 ```bash
 python3 tools/mathkernel.py task evaluate /path/to/task /path/to/candidate.json
@@ -45,13 +47,15 @@ python3 tools/mathkernel.py task verify /path/to/task ITERATION_ID
 
 `evaluate` 返回实际迭代 ID、成本、公式、伪代码和目标是否达到。它执行模型的评价程序；`not_run` 表示尚未证明。每次评价消耗一次候选预算，包括失败和超时。
 
-新模型需要证明基线和候选都符合规格。可以在评价后补充或修订证明：
+直接方案需要提供基线和候选正确性证明。变换链只需提供基线证明，工具通过规则组合候选正确性证明；这份基线证明可用于多个候选。中间步骤不必降低成本，最终方案仍须满足资源约束及改进目标。可以在评价后补充或修订证明：
 
 ```bash
 python3 tools/mathkernel.py task verify /path/to/task ITERATION_ID --proof /path/to/Proof.lean
 ```
 
 每次验证保留新记录。Lean 还会检查资源可行、Python 报告与模型计数一致、目标改善成立及证明公理。查看返回的 `diagnostic` 和运行目录中的 `lean.log`；区分无改进、不可行、证明错误、超时和环境不可用，不把失败解释为数学上不存在改进。
+
+变换链返回 `rule_failed` 时，根据 `failed_step`、原因和保留的成功步骤调整规则或参数；整条链消耗一次候选预算。`invalid_rules` 需要修订模型定义，并重新取得任务确认。修改已有推导记录不能替代一次新候选评价。
 
 根据诊断修改候选并再次评价，保持已验证的最好结果：
 
@@ -69,7 +73,7 @@ python3 tools/mathkernel.py task export /path/to/task ITERATION_ID --output /pat
 python3 tools/mathkernel.py task accept /path/to/new-bundle
 ```
 
-`accept` 重新评价与运行 Lean，检查当前规格和候选绑定、成本与展示内容，并生成 Roofline 和报告。`export` 先验收，再导出并在独立产出目录再次验收。默认停止原因为 `target_met`，也可以指定 `--stop-reason budget_exhausted` 或 `user_stopped`。
+`accept` 重新评价与运行 Lean，检查当前规格和候选绑定、成本与展示内容，并生成 Roofline 和报告；变换链会重新执行并核对逐步记录。`export` 先验收，再导出并在独立产出目录再次验收。默认停止原因为 `target_met`，也可以指定 `--stop-reason budget_exhausted` 或 `user_stopped`。
 
 产出包包括结构化方案、公式与执行伪代码、Roofline PNG 与坐标数据、成本对比、确认后的任务与模型、证明材料、探索范围和重新验收说明。交付 `acceptance_status: accepted` 的目录，并说明适用条件和资源取舍。报告不声明未证明的最优性。
 

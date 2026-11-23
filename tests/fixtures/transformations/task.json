@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "name": "transformation-protocol-test",
+  "specification": {
+    "description": "Synthetic experiment for protocol tests; resource counts are arbitrary fixture data.",
+    "inputs": [
+      {
+        "name": "x",
+        "shape": "scalar",
+        "domain": "natural numbers"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "y",
+        "shape": "scalar",
+        "domain": "natural numbers"
+      }
+    ],
+    "semantics": "Exact natural-number arithmetic",
+    "conditions": []
+  },
+  "hardware": {
+    "name": "fixture",
+    "peak_flops_per_second": 100000,
+    "hbm_bytes_per_second": 1000,
+    "fast_memory_bytes": 64,
+    "element_bytes": 4
+  },
+  "model": {
+    "definition": "Model.lean"
+  },
+  "parameters": {
+    "scale": 1024
+  },
+  "baseline": {
+    "strategy": "scheduled",
+    "passes": 6
+  },
+  "objective": {
+    "metric": "estimated_seconds",
+    "minimum_reduction": {
+      "numerator": 0,
+      "denominator": 1
+    }
+  },
+  "constraints": {},
+  "budget": {
+    "max_iterations": 10,
+    "max_seconds": 600
+  },
+  "supplements": []
+}

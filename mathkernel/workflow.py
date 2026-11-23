@@ -10,7 +10,7 @@ import uuid
 
 from .inputs import InputError, read_json, seconds_json
 from .paths import scratch_directory
-from .protocol import run_lean
+from .protocol import lean_value, run_lean
 from .workspace import (RESOURCE_KEYS, digest, local_file, load_task, now, require_ready,
                         session_status, write_json)
 
@@ -67,15 +67,42 @@ def snapshot_task(root, destination, task):
     shutil.copy2(local_file(root, name), target)
 
 
+def list_rules(root, timeout=120):
+    task, definition, revision = load_task(root)
+    with tempfile.TemporaryDirectory(dir=scratch_directory()) as directory:
+        result = run_lean(directory, task, task["baseline"], definition, timeout, rules_only=True)
+    return {**result, "revision": revision}
+
+
+def validate_candidate(candidate):
+    if not isinstance(candidate, dict) or set(candidate) - {"plan", "derivation", "proof"}:
+        raise InputError("Candidate fields are either plan or derivation, with optional proof")
+    if ("plan" in candidate) == ("derivation" in candidate):
+        raise InputError("Supply exactly one of plan or derivation")
+    if "plan" in candidate:
+        if not isinstance(candidate["plan"], dict) or not candidate["plan"]:
+            raise InputError("A candidate plan must be a nonempty object")
+    else:
+        steps = candidate["derivation"]
+        if not isinstance(steps, list) or not steps:
+            raise InputError("A derivation must be a nonempty list of rule applications")
+        for index, step in enumerate(steps, 1):
+            if (not isinstance(step, dict) or set(step) != {"rule", "arguments"} or
+                    not isinstance(step["rule"], str) or not step["rule"].strip() or
+                    not isinstance(step["arguments"], dict)):
+                raise InputError(f"Derivation step {index} requires a nonempty rule name and an arguments object")
+    if "proof" in candidate and (not isinstance(candidate["proof"], str) or not candidate["proof"].strip()):
+        raise InputError("proof must be a nonempty relative file path")
+    lean_value(candidate)
+
+
 def evaluate_iteration(root, candidate_path, timeout=120):
     root = Path(root).resolve()
     task, definition, revision = require_ready(root)
     candidate_path = Path(candidate_path).resolve()
     candidate = read_json(candidate_path)
-    if not isinstance(candidate, dict) or not isinstance(candidate.get("plan"), dict) or not candidate["plan"]:
-        raise InputError("A candidate must contain a nonempty plan object, with optional proof file")
-    if set(candidate) - {"plan", "proof"}:
-        raise InputError("Candidate fields are plan and optional proof")
+    validate_candidate(candidate)
+    steps = candidate.get("derivation")
     proof = local_file(candidate_path.parent, candidate["proof"]).read_text() if candidate.get("proof") else None
     state = session_status(root, revision, task["budget"])
     if state["budget_exhausted"]:
@@ -86,17 +113,36 @@ def evaluate_iteration(root, candidate_path, timeout=120):
     directory = root / "iterations" / identifier
     directory.mkdir(parents=True)
     snapshot_task(root, directory / "input", task)
-    write_json(directory / "plan.json", candidate["plan"])
+    if steps is None:
+        write_json(directory / "plan.json", candidate["plan"])
+    else:
+        write_json(directory / "derivation.json", {"steps": steps})
     if proof is not None:
         (directory / "proof.lean").write_text(proof)
-    record = {"id": identifier, "revision": revision, "plan_digest": digest(candidate["plan"]),
-              "created_at": now(), "verification_status": "not_run"}
+    record = {"id": identifier, "revision": revision, "created_at": now(), "verification_status": "not_run"}
+    if steps is None:
+        record["plan_digest"] = digest(candidate["plan"])
+    else:
+        record["derivation_digest"] = digest({"steps": steps})
     # Reserve the attempt before calling Lean, including failed or interrupted evaluations.
     write_json(directory / "iteration.json", record)
     remaining = task["budget"]["max_seconds"] - state["elapsed_seconds"] if "max_seconds" in task["budget"] else None
-    evaluation = run_lean(directory / "evaluation", task, candidate["plan"], definition, timeout, total_timeout=remaining)
+    evaluation = run_lean(directory / "evaluation", task, candidate.get("plan"), definition, timeout,
+                          total_timeout=remaining, derivation=steps)
+    if steps is not None and "trace" in evaluation:
+        derivation = {"steps": steps, "trace": evaluation["trace"]}
+        write_json(directory / "derivation.json", derivation)
+        record["derivation_digest"] = digest(derivation)
     if "evaluation" in evaluation:
-        comparison = compare_evaluation(evaluation["evaluation"], task, candidate["plan"])
+        plan = candidate["plan"] if steps is None else evaluation["candidate_plan"]
+        if steps is not None:
+            if not isinstance(plan, dict) or not plan:
+                raise InputError("A transformation must produce a nonempty plan object")
+            write_json(directory / "plan.json", plan)
+            record["plan_digest"] = digest(plan)
+        comparison = compare_evaluation(evaluation["evaluation"], task, plan)
+        if steps is not None:
+            comparison["derivation"] = derivation
         write_json(directory / "comparison.json", comparison)
         record.update(objective_value=comparison["objective_value"], model_improvement=comparison["model_improvement"])
     else:
@@ -120,33 +166,53 @@ def load_iteration(root, identifier):
         raise InputError("Task, model or candidate changed; evaluate a new iteration under the confirmed task")
     if load_task(directory / "input")[2] != revision:
         raise InputError("Iteration task snapshot does not match the confirmed task")
-    return directory, task, definition, plan, record
+    derivation = None
+    if "derivation_digest" in record:
+        derivation = read_json(directory / "derivation.json")
+        if record["derivation_digest"] != digest(derivation):
+            raise InputError("Derivation steps or trace changed; evaluate a new iteration")
+    return directory, task, definition, plan, record, derivation
 
 
 def verify_iteration(root, identifier, timeout=120, proof_path=None, fresh=False, update_record=True):
-    directory, task, definition, plan, record = load_iteration(root, identifier)
+    directory, task, definition, plan, record, derivation = load_iteration(root, identifier)
+    steps = derivation["steps"] if derivation is not None else None
     if proof_path:
         (directory / "proof.lean").write_text(Path(proof_path).read_text())
     if not (directory / "proof.lean").is_file():
-        raise InputError("Supply baselineCorrect and candidateCorrect with task verify --proof FILE")
+        obligations = "baselineCorrect" if derivation is not None else "baselineCorrect and candidateCorrect"
+        raise InputError(f"Supply {obligations} with task verify --proof FILE")
     proof = local_file(directory, "proof.lean").read_text()
     run = directory / "checks" / uuid.uuid4().hex[:12]
-    if fresh:
-        evaluation = run_lean(run / "evaluation", task, plan, definition, timeout)
-        if "evaluation" not in evaluation:
-            return {**evaluation, "iteration": identifier, "run_directory": str(run)}
-        comparison = compare_evaluation(evaluation["evaluation"], task, plan)
-        if comparison != read_json(directory / "comparison.json"):
-            return {"verification_status": "stale_evaluation", "diagnostic": "Saved costs or rendered plan do not match the current model", "iteration": identifier}
-    else:
-        comparison = read_json(directory / "comparison.json")
     remaining = None
     if not fresh and "max_seconds" in task["budget"]:
         state = session_status(root, record["revision"], task["budget"])
         remaining = max(0, task["budget"]["max_seconds"] - state["elapsed_seconds"])
-    result = run_lean(run / "proof", task, plan, definition, timeout, proof=proof, comparison=comparison, total_timeout=remaining)
+    if fresh or derivation is not None:
+        evaluation = run_lean(run / "evaluation", task, plan, definition, timeout,
+                              total_timeout=remaining, derivation=steps)
+        if "evaluation" not in evaluation:
+            return {**evaluation, "iteration": identifier, "run_directory": str(run)}
+        comparison = compare_evaluation(evaluation["evaluation"], task, plan)
+        if derivation is not None:
+            if evaluation["candidate_plan"] != plan:
+                return {"verification_status": "stale_evaluation", "diagnostic": "Replayed candidate does not match the saved plan", "iteration": identifier}
+            comparison["derivation"] = {"steps": steps, "trace": evaluation["trace"]}
+            if comparison["derivation"] != derivation:
+                return {"verification_status": "stale_evaluation", "diagnostic": "Replayed steps do not match the saved derivation", "iteration": identifier}
+        if comparison != read_json(directory / "comparison.json"):
+            return {"verification_status": "stale_evaluation", "diagnostic": "Saved costs, derivation or rendered plan do not match the current model", "iteration": identifier}
+    else:
+        comparison = read_json(directory / "comparison.json")
+    if not fresh and "max_seconds" in task["budget"]:
+        state = session_status(root, record["revision"], task["budget"])
+        remaining = max(0, task["budget"]["max_seconds"] - state["elapsed_seconds"])
+    result = run_lean(run / "proof", task, plan, definition, timeout, proof=proof, comparison=comparison,
+                      total_timeout=remaining, derivation=steps)
     result.update(iteration=identifier, revision=record["revision"], plan_digest=digest(plan),
                   proof_digest=digest(proof), run_directory=str(run), checked_at=now())
+    if derivation is not None:
+        result["derivation_digest"] = record["derivation_digest"]
     write_json(run / "result.json", result)
     record.update(verification_status=result["verification_status"], last_check=str(run.relative_to(directory)),
                   objective_value=comparison["objective_value"])
@@ -178,9 +244,14 @@ def roofline_points(comparison):
 
 def report_text(task, comparison, record):
     rows = ["# 优化计算方案", "", task["specification"]["description"], "", "## 数学变换", "",
-            comparison["baseline"]["formula"], "", "→", "", comparison["candidate"]["formula"], "",
-            "## 执行伪代码", "", "```text", comparison["candidate"]["pseudocode"].rstrip(), "```", "",
-            "## 成本对比", "", "| 指标 | 基线 | 候选 |", "| --- | ---: | ---: |"]
+            comparison["baseline"]["formula"], "", "→", "", comparison["candidate"]["formula"], ""]
+    if "derivation" in comparison:
+        rows.extend(["## 变换步骤", ""])
+        for index, entry in enumerate(comparison["derivation"]["trace"], 1):
+            rows.extend([f"{index}. `{entry['rule']}`，参数：`{json.dumps(entry['arguments'], ensure_ascii=False)}`", "",
+                         entry["before_formula"], "", "→", "", entry["after_formula"], ""])
+    rows.extend(["## 执行伪代码", "", "```text", comparison["candidate"]["pseudocode"].rstrip(), "```", "",
+                 "## 成本对比", "", "| 指标 | 基线 | 候选 |", "| --- | ---: | ---: |"])
     for label, key in (("计算量（FLOP）", "flops"), ("搬运量（字节）", "hbm_bytes"), ("快速存储峰值（字节）", "peak_fast_memory_bytes")):
         rows.append(f"| {label} | {comparison['baseline'][key]} | {comparison['candidate'][key]} |")
     times = [comparison[name]["estimated_seconds"]["approximate"] * 1e6 for name in ("baseline", "candidate")]
@@ -199,7 +270,8 @@ def artifact_contents(task, comparison, plan, exploration):
     return {"scheme.json": {"baseline": task["baseline"], "candidate": plan,
                             "baseline_formula": comparison["baseline"]["formula"],
                             "candidate_formula": comparison["candidate"]["formula"],
-                            "pseudocode": comparison["candidate"]["pseudocode"]},
+                            "pseudocode": comparison["candidate"]["pseudocode"],
+                            **({"derivation": comparison["derivation"]} if "derivation" in comparison else {})},
             "costs.json": comparison, "roofline.json": roofline_points(comparison),
             "exploration.json": exploration}
 
@@ -230,7 +302,7 @@ def _accept_iteration(root, identifier, timeout, stop_reason):
     if result["verification_status"] != "verified":
         result = {**result, "acceptance_status": "rejected"}
         return result
-    directory, task, definition, plan, record = load_iteration(root, identifier)
+    directory, task, definition, plan, record, derivation = load_iteration(root, identifier)
     comparison = read_json(directory / "comparison.json")
     if bundle and bundle.get("revision") != record["revision"]:
         raise InputError("Bundle revision does not match the proven task")
@@ -288,12 +360,12 @@ def export_iteration(root, identifier, output, timeout=120, stop_reason="target_
     result = accept_iteration(root, identifier, timeout, stop_reason)
     if result["acceptance_status"] != "accepted":
         return result
-    directory, task, definition, plan, record = load_iteration(root, identifier)
+    directory, task, definition, plan, record, derivation = load_iteration(root, identifier)
     snapshot_task(root, output, task)
     selected = output / "iterations" / identifier
     selected.mkdir(parents=True)
     snapshot_task(root, selected / "input", task)
-    for name in ("iteration.json", "plan.json", "comparison.json", "proof.lean"):
+    for name in ("iteration.json", "plan.json", "derivation.json", "comparison.json", "proof.lean"):
         if (directory / name).is_file():
             shutil.copy2(directory / name, selected / name)
     # Keep only sources, diagnostics and results; compiled caches are reconstructed.

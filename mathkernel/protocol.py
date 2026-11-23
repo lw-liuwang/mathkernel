@@ -30,7 +30,7 @@ def lean_value(value):
     raise InputError("Task and plan numbers must be integers; express fractions as numerator/denominator objects")
 
 
-def instance_source(task, candidate):
+def instance_source(task, candidate, derivation=None):
     hardware = task["hardware"]
     h = "⟨" + ", ".join(str(hardware[key]) for key in ("peak_flops_per_second", "hbm_bytes_per_second", "fast_memory_bytes", "element_bytes")) + "⟩"
     objective = task["objective"]
@@ -38,25 +38,37 @@ def instance_source(task, candidate):
     limits = task["constraints"]
     limit_terms = [f"(some {limits[key]})" if key in limits else "none" for key in ("flops", "hbm_bytes", "peak_fast_memory_bytes")]
     goal = f"⟨.{METRICS[objective['metric']]}, {reduction['numerator']}, {reduction['denominator']}, {', '.join(limit_terms)}⟩"
+    candidate_term = lean_value(candidate)
+    steps = ""
+    if derivation is not None:
+        steps = "\ndef steps : List TransformationStep := [" + ", ".join(
+            "⟨" + json.dumps(step["rule"], ensure_ascii=False) + ", " + lean_value(step["arguments"]) + "⟩"
+            for step in derivation) + "]\n"
+        # Derived candidates are reconstructed in Lean, preserving the model's Value representation.
+        candidate_term = "match replay model baseline steps with | .ok result => result.plan | .error _ => .null"
     return f"""import Model
+import MathKernel.Transformations
 
 namespace MathKernel.TaskInstance
 open Workflow
 
 def task : Value := {lean_value(task)}
 def baseline : Value := {lean_value(task['baseline'])}
-def candidate : Value := {lean_value(candidate)}
 def hardware : Hardware := {h}
 def goal : Goal := {goal}
 def model : Model := MathKernel.TaskModel.model task
+{steps}
+def candidate : Value := {candidate_term}
 
 end MathKernel.TaskInstance
 """
 
 
-def certificate_source(comparison):
+def certificate_source(comparison, derived=False):
     def report(name):
         return "[" + ", ".join(f"⟨{op['flops']}, {op['hbm_bytes']}, {op['peak_fast_memory_bytes']}⟩" for op in comparison[name]["operations"]) + "]"
+    candidate_proof = ("derivedCorrect model baseline steps candidate (by rfl) TaskProof.baselineCorrect"
+                       if derived else "TaskProof.candidateCorrect")
     return f"""import Proof
 
 set_option maxRecDepth 8192
@@ -67,7 +79,7 @@ open Workflow TaskInstance
 
 theorem verified : Workflow.Verified model baseline candidate hardware goal
     {report('baseline')} {report('candidate')} := by
-  exact ⟨TaskProof.baselineCorrect, TaskProof.candidateCorrect,
+  exact ⟨TaskProof.baselineCorrect, {candidate_proof},
     by decide, by decide, by decide, by decide, by decide⟩
 
 #print axioms verified
@@ -75,25 +87,32 @@ end MathKernel.Instance
 """
 
 
-def run_lean(directory, task, candidate, definition, timeout, proof=None, comparison=None, total_timeout=None):
+def run_lean(directory, task, candidate, definition, timeout, proof=None, comparison=None,
+             total_timeout=None, derivation=None, rules_only=False):
     """Evaluate a model, or check fixed certificate obligations with submitted proofs."""
     directory = Path(directory).resolve()
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / "TaskInstance.lean").write_text(instance_source(task, candidate))
+    (directory / "TaskInstance.lean").write_text(instance_source(task, candidate, derivation))
     commands = [("--no-cache", "build", "MathKernel")]
     (directory / "Model.lean").write_text(definition)
     commands.append(("env", "lean", "-o", str(directory / "Model.olean"), str(directory / "Model.lean")))
     commands.append(("env", "lean", "-o", str(directory / "TaskInstance.olean"), str(directory / "TaskInstance.lean")))
     if comparison is None:
+        if rules_only:
+            expression = "rulesJson model"
+        elif derivation is not None:
+            expression = "derivationJson model baseline steps"
+        else:
+            expression = ('Lean.Json.mkObj [("evaluation", Lean.Json.mkObj '
+                          '[("baseline", evaluationJson model baseline), ("candidate", evaluationJson model candidate)])]')
         (directory / "Evaluate.lean").write_text(
             'import TaskInstance\nopen MathKernel.Workflow MathKernel.TaskInstance\n'
-            f'#eval IO.println ("{MARKER}" ++ (Lean.Json.mkObj '
-            '[("baseline", evaluationJson model baseline), ("candidate", evaluationJson model candidate)]).compress)\n'
+            f'#eval IO.println ("{MARKER}" ++ ({expression}).compress)\n'
         )
         commands.append(("env", "lean", str(directory / "Evaluate.lean")))
     else:
         (directory / "Proof.lean").write_text(proof)
-        (directory / "Certificate.lean").write_text(certificate_source(comparison))
+        (directory / "Certificate.lean").write_text(certificate_source(comparison, derivation is not None))
         commands.extend([
             ("env", "lean", "-o", str(directory / "Proof.olean"), str(directory / "Proof.lean")),
             ("env", "lean", str(directory / "Certificate.lean")),
@@ -120,7 +139,7 @@ def run_lean(directory, task, candidate, definition, timeout, proof=None, compar
         lines = [line[len(MARKER):] for line in output.splitlines() if line.startswith(MARKER)]
         if len(lines) != 1:
             raise ValueError("Expected exactly one model evaluation record")
-        return {"verification_status": "not_run", "evaluation": json.loads(lines[0])}
+        return {"verification_status": "not_run", **json.loads(lines[0])}
     except subprocess.TimeoutExpired as error:
         partial = error.stdout or b""
         log.append(partial.decode(errors="replace") if isinstance(partial, bytes) else partial)

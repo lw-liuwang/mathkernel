@@ -26,3 +26,6 @@ when asked to optimize a mathematical plan. Follow
   With Lean installed, this includes actual proof success and failure cases.
 - Editing Lean model sources changes the trusted model. Rebuild and reverify;
   never present old verification artifacts as results for the changed model.
+- Task transformations belong to the confirmed model. Use `task rules` to inspect
+  them and submit a `derivation` to reuse rule and baseline proofs. Changes to
+  rules require renewed confirmation; changing candidate arguments does not.
